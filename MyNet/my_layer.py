@@ -375,7 +375,7 @@ class EncoderLayer(nn.Module):
         # else:
         #     dec_attn_mask = torch.triu(
         #         word_emb.new_ones(qlen, klen), diagonal=1 + mlen).byte()[:, :, None]
-        dec_attn_mask = all_zeros
+        dec_attn_mask = None
         print(dec_attn_mask.size())
         pos_seq = torch.arange(klen - 1, -1, -1.0, device=word_emb.device,
                                dtype=word_emb.dtype)
