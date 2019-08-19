@@ -1,1 +1,4 @@
 # Gao
+ESPnet的Encoder替换为TransformerXL的方式
+保留了原ESPnet Encoder的大多数使用接口，但定义Encoder时需要指定输出序列的长度
+保留了ESPnet的mask的功能，当输入数据没有被mask时，可以输入None加快速度
