@@ -362,18 +362,20 @@ class EncoderLayer(nn.Module):
         word_emb = dec_inp
         mlen = mems.size(0) if mems is not None else 0
         klen = mlen + qlen
-        if mlen == qlen:
-            all_ones = word_emb.new_ones(qlen, klen)
-            mask_len = klen - self.mem_len
-            if mask_len > 0:
-                mask_shift_len = qlen - mask_len
-            else:
-                mask_shift_len = qlen
-            dec_attn_mask = (torch.triu(all_ones, 1 + mlen)
-                             + torch.tril(all_ones, -mask_shift_len)).byte()[:, :, None]  # -1
-        else:
-            dec_attn_mask = torch.triu(
-                word_emb.new_ones(qlen, klen), diagonal=1 + mlen).byte()[:, :, None]
+        all_zeros = word_emb.new_empty(qlen, klen).byte()[:,:,None]
+        # if mlen == qlen:
+        #     all_ones = word_emb.new_ones(qlen, klen)
+        #     mask_len = klen - self.mem_len
+        #     if mask_len > 0:
+        #         mask_shift_len = qlen - mask_len
+        #     else:
+        #         mask_shift_len = qlen
+        #     dec_attn_mask = (torch.triu(all_ones, 1 + mlen)
+        #                      + torch.tril(all_ones, -mask_shift_len)).byte()[:, :, None]  # -1
+        # else:
+        #     dec_attn_mask = torch.triu(
+        #         word_emb.new_ones(qlen, klen), diagonal=1 + mlen).byte()[:, :, None]
+        dec_attn_mask = all_zeros
         print(dec_attn_mask.size())
         pos_seq = torch.arange(klen - 1, -1, -1.0, device=word_emb.device,
                                dtype=word_emb.dtype)
