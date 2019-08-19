@@ -225,9 +225,9 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
         m_len = att_score.size(1)-mask.size(1)
         if(m_len>0):
             m_mask = torch.ones(mask.size(0),m_len).byte()
-            print("m_mask:",m_mask.size())
+            #print("m_mask:",m_mask.size())
             mask = torch.cat([m_mask,mask],dim=1)
-        print(mask.size())
+        #print(mask.size())
         att_score = att_score.transpose(1,3).transpose(2,3)
         mask = mask.t()
         att_score = att_score.masked_fill(mask, -float('inf'))
