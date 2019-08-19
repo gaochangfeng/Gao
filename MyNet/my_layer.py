@@ -219,11 +219,25 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
 
         self.r_net = nn.Linear(self.d_model, self.n_head * self.d_head, bias=False)
 
+    def _maskscore(self,att_score,mask):
+        if mask is None:
+            return att_score
+        m_len = att_score.size(1)-mask.size(1)
+        if(m_len>0):
+            m_mask = torch.ones(mask.size(0),m_len).byte()
+            print("m_mask:",m_mask.size())
+            mask = torch.cat([m_mask,mask],dim=1)
+        print(mask.size())
+        att_score = att_score.transpose(1,3).transpose(2,3)
+        mask = mask.t()
+        att_score = att_score.masked_fill(mask, -float('inf'))
+        att_score = att_score.transpose(2, 3).transpose(1, 3)
+        return att_score
+
     def forward(self, w, r, r_w_bias, r_r_bias, attn_mask=None, mems=None):
         qlen, rlen, bsz = w.size(0), r.size(0), w.size(1)
         # print(w.size(),r.size())
         if mems is not None:
-            #print(mems.size(),w.size())
             cat = torch.cat([mems, w], 0)
             if self.pre_lnorm:
                 w_heads = self.qkv_net(self.layer_norm(cat))
@@ -261,16 +275,16 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
         # [qlen x klen x bsz x n_head]
         attn_score = AC + BD
         attn_score.mul_(self.scale)
-
+        #print(attn_score.size())
         #### compute attention probability
-        if attn_mask is not None and attn_mask.any().item():
-            if attn_mask.dim() == 2:
-                attn_score = attn_score.float().masked_fill(
-                    attn_mask[None, :, :, None], -float('inf')).type_as(attn_score)
-            elif attn_mask.dim() == 3:
-                attn_score = attn_score.float().masked_fill(
-                    attn_mask[:, :, :, None], -float('inf')).type_as(attn_score)
-
+        # if attn_mask is not None and attn_mask.any().item():
+        #     if attn_mask.dim() == 2:
+        #         attn_score = attn_score.float().masked_fill(
+        #             attn_mask[None, :, :, None], -float('inf')).type_as(attn_score)
+        #     elif attn_mask.dim() == 3:
+        #         attn_score = attn_score.float().masked_fill(
+        #             attn_mask[:, :, :, None], -float('inf')).type_as(attn_score)
+        attn_score = self._maskscore(attn_score,attn_mask)
         # [qlen x klen x bsz x n_head]
         attn_prob = F.softmax(attn_score, dim=1)
         attn_prob = self.dropatt(attn_prob)
@@ -354,7 +368,7 @@ class EncoderLayer(nn.Module):
             self.mems = None
         return None
 
-    def _forward(self, dec_inp, mems=None):
+    def _forward(self, dec_inp, mask,mems=None):
         dec_inp = dec_inp.transpose(0, 1)
         # qlen = time_step,bsz = batch_size
         qlen = dec_inp.size(0)
@@ -375,8 +389,8 @@ class EncoderLayer(nn.Module):
         # else:
         #     dec_attn_mask = torch.triu(
         #         word_emb.new_ones(qlen, klen), diagonal=1 + mlen).byte()[:, :, None]
-        dec_attn_mask = None
-        print(dec_attn_mask.size())
+        dec_attn_mask = mask
+        #print(dec_attn_mask.size())
         pos_seq = torch.arange(klen - 1, -1, -1.0, device=word_emb.device,
                                dtype=word_emb.dtype)
         '''
@@ -423,7 +437,7 @@ class EncoderLayer(nn.Module):
         if self.mems is None:
             self.init_mems()
         tgt_len = self.tgt_len
-        hidden, self.mems = self._forward(x, mems=self.mems)
+        hidden, self.mems = self._forward(x,mask=masks,mems=self.mems)
         pred_hid = hidden[-tgt_len:]
         x = pred_hid.transpose(0, 1)
         return x, masks

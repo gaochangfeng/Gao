@@ -74,7 +74,7 @@ class Encoder(torch.nn.Module):
         """Embed positions in tensor
 
         :param torch.Tensor xs: input tensor
-        :param torch.Tensor masks: input mask
+        :param torch.Tensor masks: input mask,use None mean no input is masked
         :return: position embedded tensor and mask
         :rtype Tuple[torch.Tensor, torch.Tensor]:
         """
