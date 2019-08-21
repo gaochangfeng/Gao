@@ -1,11 +1,11 @@
 import torch
-from MyNet.my_net import Encoder
+from MyNet.encoder import Encoder
 
 if __name__ == '__main__':
-    a = torch.Tensor(2,5,3)
+    a = torch.Tensor(10,2,5,3)
     mask = torch.ByteTensor([[0,0,1,1,1],[0,1,1,1,1]])
-    encoder = Encoder(3,5,num_blocks=1)
-    for i in range(3):
-        b,_ = encoder(a,mask)
+    encoder = Encoder(3,5,num_blocks=3)
+    for i in range(10):
+        b,_ = encoder(a[i],mask)
     print(a.size())
-    print(b)
+    print(b.size())
