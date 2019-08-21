@@ -4,7 +4,7 @@ ESPnet的Encoder替换为TransformerXL的方式
 保留了ESPnet的mask的功能，当输入数据没有被mask时，可以输入None加快速度
 
 # 使用方法：
-1.找到需要将传统Encoder替换为TransformerXL的地方
+1.找到需要将传统Encoder替换为TransformerXL的地方\n
 2.import的部分
     #from espnet.nets.pytorch_backend.transformer.encoder import Encoder
     from MyNet.encoder import Encoder
