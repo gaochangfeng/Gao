@@ -1,10 +1,5 @@
 # Copyright 2019 Shigeki Karita
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
-# 代码移植示例：将MyNet作为一个单独的工具包使用
-# 1.更改import的部分，将ESPnet的Encoder替换为自己的Encoder：line 24，25
-# 2.在Encoder定义的时候指定所需的mem的大小（一般等于输入序列的长度）和额外的mem大小 line 79,80
-#   在训练时一般额外大小为0
-# 3.修改其他需要修改的部分，如为mem参数的配置提供接口
 from argparse import Namespace
 from distutils.util import strtobool
 
@@ -22,11 +17,10 @@ from espnet.nets.pytorch_backend.nets_utils import th_accuracy
 from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
 from espnet.nets.pytorch_backend.transformer.decoder import Decoder
 #from espnet.nets.pytorch_backend.transformer.encoder import Encoder
-from MyNet.encoder import Encoder
 from espnet.nets.pytorch_backend.transformer.label_smoothing_loss import LabelSmoothingLoss
 from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
 from espnet.nets.pytorch_backend.transformer.plot import PlotAttentionReport
-
+from MyNet.encoder import Encoder
 
 def subsequent_mask(size, device="cpu", dtype=torch.uint8):
     """Create mask for subsequent steps (1, size, size)
@@ -64,6 +58,14 @@ class E2E(ASRInterface, torch.nn.Module):
                            help='optimizer warmup steps')
         group.add_argument('--transformer-length-normalized-loss', default=True, type=strtobool,
                            help='normalize loss by length')
+        group.add_argument("--transformer-encoder-type", type=str, default="memory",
+                           choices=["memory", "traditional"],
+                           help='transformer encoder attention type')
+        group.add_argument("--transformer-encoder-mem-len", type=int, default=0,
+                           help='transformer encoder memory length,only used when transformer-encoder-type is memory')
+        group.add_argument("--transformer-encoder-ext-len", type=int, default=0,
+                           help='transformer encoder extra memory length,only used when transformer-encoder-type is '
+                                'memory')
         return parser
 
     @property
@@ -76,8 +78,9 @@ class E2E(ASRInterface, torch.nn.Module):
             args.transformer_attn_dropout_rate = args.dropout_rate
         self.encoder = Encoder(
             idim=idim,
-            time_len=10,
-            ext_len= 0,
+            time_len=args.transformer_encoder_mem_len,
+            ext_len=args.transformer_encoder_ext_len,
+            attention_type=args.transformer_encoder_type,
             attention_dim=args.adim,
             attention_heads=args.aheads,
             linear_units=args.eunits,

@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
-from MyNet.repos_attention import PositionalEmbedding
+from MyNet.repos_attention import RelPositionalEmbedding
 from MyNet.repos_attention import RelPartialLearnableDecoderLayer
+
 
 class EncoderLayer(nn.Module):
     """Encoder layer module
@@ -19,7 +20,8 @@ class EncoderLayer(nn.Module):
     :param int pre_lnorm: the way to normalise the data
     """
 
-    def __init__(self, n_head, d_model, d_head, d_inner, dropout, ext_len, mem_len, dropatt, pre_lnorm,tgt_len=None):
+    def __init__(self, n_head, d_model, d_head, pos_ff,
+                 dropout, ext_len, mem_len, dropatt, pre_lnorm, tgt_len=None):
         super(EncoderLayer, self).__init__()
         self.mems = None
         self.n_head = n_head
@@ -27,15 +29,16 @@ class EncoderLayer(nn.Module):
         self.d_model = d_model
         self.mem_len = mem_len
         self.tgt_len = tgt_len
-        self.pos_emb = PositionalEmbedding(self.d_model)
+        self.pos_emb = RelPositionalEmbedding(self.d_model)
         self.r_w_bias = nn.Parameter(torch.rand(size=[n_head, d_head]))
         self.r_r_bias = nn.Parameter(torch.rand(size=[n_head, d_head]))
-        self.layer = RelPartialLearnableDecoderLayer(n_head=n_head, d_model=d_model, d_inner=d_inner, d_head=d_head,
-                                                     dropout=dropout,
+        self.layer = RelPartialLearnableDecoderLayer(n_head=n_head, d_model=d_model, d_head=d_head,
+                                                     dropout=dropout, pos_ff=pos_ff,
                                                      tgt_len=tgt_len, ext_len=ext_len, mem_len=mem_len,
                                                      dropatt=dropatt, pre_lnorm=pre_lnorm)
         self.drop = nn.Dropout(dropout)
-        self.ext_len= ext_len
+        self.ext_len = ext_len
+
     def init_mems(self):
         param = next(self.parameters())
         if self.mem_len > 0:
@@ -44,7 +47,7 @@ class EncoderLayer(nn.Module):
             self.mems = None
         return None
 
-    def _forward(self, dec_inp, mask,mems=None):
+    def _forward(self, dec_inp, mask, mems=None):
         qlen = dec_inp.size(0)
         word_emb = dec_inp
         mlen = mems.size(0) if mems is not None else 0
@@ -85,9 +88,10 @@ class EncoderLayer(nn.Module):
         """Compute encoded features
 
         :param torch.Tensor x: encoded source features (batch, max_time_in, size)
-        :param torch.Tensor mask: mask for x (batch, max_time_in)
+        :param torch.Tensor mask: mask for x (batch, 1, max_time_in),1 for padding,0 for data
         :rtype: Tuple[torch.Tensor, torch.Tensor]
         """
+        in_mask = ~masks.squeeze(1)
         if self.mems is None:
             self.init_mems()
         if self.tgt_len is None:
@@ -95,7 +99,7 @@ class EncoderLayer(nn.Module):
         else:
             tgt_len = self.tgt_len
         x = x.transpose(0, 1)
-        hidden, self.mems = self._forward(x,mask=masks,mems=self.mems)
+        hidden, self.mems = self._forward(x, mask=in_mask, mems=self.mems)
         pred_hid = hidden[-tgt_len:]
         x = pred_hid.transpose(0, 1)
         return x, masks

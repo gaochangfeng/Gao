@@ -2,9 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class PositionalEmbedding(nn.Module):
+
+class RelPositionalEmbedding(nn.Module):
     def __init__(self, demb):
-        super(PositionalEmbedding, self).__init__()
+        super(RelPositionalEmbedding, self).__init__()
 
         self.demb = demb
 
@@ -21,39 +22,39 @@ class PositionalEmbedding(nn.Module):
             return pos_emb[:, None, :]
 
 
-class PositionwiseFF(nn.Module):
-    def __init__(self, d_model, d_inner, dropout, pre_lnorm=False):
-        super(PositionwiseFF, self).__init__()
-
-        self.d_model = d_model
-        self.d_inner = d_inner
-        self.dropout = dropout
-        self.CoreNet = nn.Sequential(
-            nn.Linear(d_model, d_inner), nn.ReLU(inplace=True),
-            nn.Dropout(dropout),
-            nn.Linear(d_inner, d_model),
-            nn.Dropout(dropout),
-        )
-
-        self.layer_norm = nn.LayerNorm(d_model)
-
-        self.pre_lnorm = pre_lnorm
-
-    def forward(self, inp):
-        if self.pre_lnorm:
-            ##### layer normalization + positionwise feed-forward
-            core_out = self.CoreNet(self.layer_norm(inp))
-
-            ##### residual connection
-            output = core_out + inp
-        else:
-            ##### positionwise feed-forward
-            core_out = self.CoreNet(inp)
-
-            ##### residual connection + layer normalization
-            output = self.layer_norm(inp + core_out)
-
-        return output
+# class PositionwiseFF(nn.Module):
+#     def __init__(self, d_model, d_inner, dropout, pre_lnorm=False):
+#         super(PositionwiseFF, self).__init__()
+#
+#         self.d_model = d_model
+#         self.d_inner = d_inner
+#         self.dropout = dropout
+#         self.CoreNet = nn.Sequential(
+#             nn.Linear(d_model, d_inner), nn.ReLU(inplace=True),
+#             nn.Dropout(dropout),
+#             nn.Linear(d_inner, d_model),
+#             nn.Dropout(dropout),
+#         )
+#
+#         self.layer_norm = nn.LayerNorm(d_model)
+#
+#         self.pre_lnorm = pre_lnorm
+#
+#     def forward(self, inp):
+#         if self.pre_lnorm:
+#             ##### layer normalization + positionwise feed-forward
+#             core_out = self.CoreNet(self.layer_norm(inp))
+#
+#             ##### residual connection
+#             output = core_out + inp
+#         else:
+#             ##### positionwise feed-forward
+#             core_out = self.CoreNet(inp)
+#
+#             ##### residual connection + layer normalization
+#             output = self.layer_norm(inp + core_out)
+#
+#         return output
 
 
 class RelMultiHeadAttn(nn.Module):
@@ -218,16 +219,16 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
 
         self.r_net = nn.Linear(self.d_model, self.n_head * self.d_head, bias=False)
 
-    def _maskscore(self,att_score,mask):
+    def _maskscore(self, att_score, mask):
         if mask is None:
             return att_score
-        m_len = att_score.size(1)-mask.size(1)
-        if(m_len>0):
-            m_mask = torch.ones(mask.size(0),m_len).byte()
-            #print("m_mask:",m_mask.size())
-            mask = torch.cat([m_mask,mask],dim=1)
-        #print(mask.size())
-        att_score = att_score.transpose(1,3).transpose(2,3)
+        m_len = att_score.size(1) - mask.size(1)
+        if (m_len > 0):
+            m_mask = torch.ones(mask.size(0), m_len).byte()
+            # print("m_mask:",m_mask.size())
+            mask = torch.cat([m_mask, mask], dim=1)
+        # print(mask.size())
+        att_score = att_score.transpose(1, 3).transpose(2, 3)
         mask = mask.t()
         att_score = att_score.masked_fill(mask, -float('inf'))
         att_score = att_score.transpose(2, 3).transpose(1, 3)
@@ -274,7 +275,7 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
         # [qlen x klen x bsz x n_head]
         attn_score = AC + BD
         attn_score.mul_(self.scale)
-        #print(attn_score.size())
+        # print(attn_score.size())
         #### compute attention probability
         # if attn_mask is not None and attn_mask.any().item():
         #     if attn_mask.dim() == 2:
@@ -283,7 +284,7 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
         #     elif attn_mask.dim() == 3:
         #         attn_score = attn_score.float().masked_fill(
         #             attn_mask[:, :, :, None], -float('inf')).type_as(attn_score)
-        attn_score = self._maskscore(attn_score,attn_mask)
+        attn_score = self._maskscore(attn_score, attn_mask)
         # [qlen x klen x bsz x n_head]
         attn_prob = F.softmax(attn_score, dim=1)
         attn_prob = self.dropatt(attn_prob)
@@ -310,14 +311,15 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
 
 
 class RelPartialLearnableDecoderLayer(nn.Module):
-    def __init__(self, n_head, d_model, d_head, d_inner, dropout,
+    def __init__(self, n_head, d_model, d_head, dropout,pos_ff,
                  **kwargs):
         super(RelPartialLearnableDecoderLayer, self).__init__()
 
         self.dec_attn = RelPartialLearnableMultiHeadAttn(n_head, d_model,
                                                          d_head, dropout, **kwargs)
-        self.pos_ff = PositionwiseFF(d_model, d_inner, dropout,
-                                     pre_lnorm=kwargs.get('pre_lnorm'))
+        # self.pos_ff = PositionwiseFF(d_model, d_inner, dropout,
+        #                              pre_lnorm=kwargs.get('pre_lnorm'))
+        self.pos_ff = pos_ff
 
     def forward(self, dec_inp, r, r_w_bias, r_r_bias, dec_attn_mask=None, mems=None):
         output = self.dec_attn(dec_inp, r, r_w_bias, r_r_bias,
