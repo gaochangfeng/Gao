@@ -1,5 +1,10 @@
 # Copyright 2019 Shigeki Karita
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
+# 代码移植示例：将MyNet作为一个单独的工具包使用
+# 1.更改import的部分，将ESPnet的Encoder替换为自己的Encoder：line 24，25
+# 2.在Encoder定义的时候指定所需的mem的大小（一般等于输入序列的长度）和额外的mem大小 line 79,80
+#   在训练时一般额外大小为0
+# 3.修改其他需要修改的部分，如为mem参数的配置提供接口
 from argparse import Namespace
 from distutils.util import strtobool
 
@@ -71,6 +76,8 @@ class E2E(ASRInterface, torch.nn.Module):
             args.transformer_attn_dropout_rate = args.dropout_rate
         self.encoder = Encoder(
             idim=idim,
+            time_len=10,
+            ext_len= 0,
             attention_dim=args.adim,
             attention_heads=args.aheads,
             linear_units=args.eunits,
