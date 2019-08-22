@@ -68,10 +68,12 @@ class Encoder(torch.nn.Module):
         """Embed positions in tensor
 
         :param torch.Tensor xs: input tensor
-        :param torch.Tensor masks: input mask,use None mean no input is masked
+        :param torch.Tensor masks: input mask,use None mean no input is padded, 1 means data,zero means padding
         :return: position embedded tensor and mask
         :rtype Tuple[torch.Tensor, torch.Tensor]:
         """
+        if masks is not None:
+            masks = ~masks
         if isinstance(self.embed, Conv2dSubsampling):
             xs, masks = self.embed(xs, masks)
         else:
@@ -79,7 +81,7 @@ class Encoder(torch.nn.Module):
         xs, masks = self.encoders(xs, masks)
         if self.normalize_before:
             xs = self.after_norm(xs)
-        return xs, masks
+        return xs, ~masks
 
     def _generateInputLayer(self):
         if self.input_layer == "linear":
