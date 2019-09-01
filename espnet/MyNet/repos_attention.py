@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+FILL_INF = 9.9e20
+
 
 class RelPositionalEmbedding(nn.Module):
     def __init__(self, demb):
@@ -57,6 +59,22 @@ class RelPositionalEmbedding(nn.Module):
 #         return output
 
 
+def _rel_shift(x, zero_triu=False):
+    zero_pad = torch.zeros((x.size(0), 1, *x.size()[2:]),
+                           device=x.device, dtype=x.dtype)
+    x_padded = torch.cat([zero_pad, x], dim=1)
+
+    x_padded = x_padded.view(x.size(1) + 1, x.size(0), *x.size()[2:])
+
+    x = x_padded[1:].view_as(x)
+
+    if zero_triu:
+        ones = torch.ones((x.size(0), x.size(1)))
+        x = x * torch.tril(ones, x.size(1) - x.size(0))[:, :, None, None]
+
+    return x
+
+
 class RelMultiHeadAttn(nn.Module):
     def __init__(self, n_head, d_model, d_head, dropout, dropatt=0,
                  tgt_len=None, ext_len=None, mem_len=None, pre_lnorm=False):
@@ -108,21 +126,6 @@ class RelMultiHeadAttn(nn.Module):
 
         return x
 
-    def _rel_shift(self, x, zero_triu=False):
-        zero_pad = torch.zeros((x.size(0), 1, *x.size()[2:]),
-                               device=x.device, dtype=x.dtype)
-        x_padded = torch.cat([zero_pad, x], dim=1)
-
-        x_padded = x_padded.view(x.size(1) + 1, x.size(0), *x.size()[2:])
-
-        x = x_padded[1:].view_as(x)
-
-        if zero_triu:
-            ones = torch.ones((x.size(0), x.size(1)))
-            x = x * torch.tril(ones, x.size(1) - x.size(0))[:, :, None, None]
-
-        return x
-
     def forward(self, w, r, attn_mask=None, mems=None):
         raise NotImplementedError
 
@@ -158,7 +161,7 @@ class RelLearnableMultiHeadAttn(RelMultiHeadAttn):
         w_head_q = w_head_q.view(qlen, bsz, self.n_head, self.d_head)
         w_head_k = w_head_k.view(klen, bsz, self.n_head, self.d_head)
         w_head_v = w_head_v.view(klen, bsz, self.n_head, self.d_head)
-        # print("r_emb origen",r_emb.size())
+
         if klen > r_emb.size(0):
             r_emb_pad = r_emb[0:1].expand(klen - r_emb.size(0), -1, -1)
             r_emb = torch.cat([r_emb_pad, r_emb], 0)
@@ -171,11 +174,9 @@ class RelLearnableMultiHeadAttn(RelMultiHeadAttn):
         # compute attention score
         rw_head_q = w_head_q + r_w_bias[None]  # qlen x bsz x n_head x d_head
         AC = torch.einsum('ibnd,jbnd->ijbn', [rw_head_q, w_head_k])  # qlen x klen x bsz x n_head
-        # print('w_head_q',w_head_q.size())
-        # print("r_emb",r_emb.size())
         B_ = torch.einsum('ibnd,jnd->ijbn', [w_head_q, r_emb])  # qlen x klen x bsz x n_head
         D_ = r_bias[None, :, None]  # 1    x klen x 1   x n_head
-        BD = self._rel_shift(B_ + D_)
+        BD = _rel_shift(B_ + D_)
 
         # [qlen x klen x bsz x n_head]
         attn_score = AC + BD
@@ -184,9 +185,9 @@ class RelLearnableMultiHeadAttn(RelMultiHeadAttn):
         # compute attention probability
         if attn_mask is not None and attn_mask.any().item():
             if attn_mask.dim() == 2:
-                attn_score.masked_fill_(attn_mask[None, :, :, None], -float('inf'))
+                attn_score.masked_fill_(attn_mask[None, :, :, None], -FILL_INF)
             elif attn_mask.dim() == 3:
-                attn_score.masked_fill_(attn_mask[:, :, :, None], -float('inf'))
+                attn_score.masked_fill_(attn_mask[:, :, :, None], -FILL_INF)
 
         # [qlen x klen x bsz x n_head]
         attn_prob = F.softmax(attn_score, dim=1)
@@ -223,20 +224,24 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
         if mask is None:
             return att_score
         m_len = att_score.size(1) - mask.size(1)
-        if (m_len > 0):
-            m_mask = torch.ones(mask.size(0), m_len).byte()
-            # print("m_mask:",m_mask.size())
+        if m_len > 0:
+            m_mask = torch.zeros(mask.size(0), m_len).byte().to(mask.device)
             mask = torch.cat([m_mask, mask], dim=1)
-        # print(mask.size())
-        att_score = att_score.transpose(1, 3).transpose(2, 3)
-        mask = mask.t()
-        att_score = att_score.masked_fill(mask, -float('inf'))
-        att_score = att_score.transpose(2, 3).transpose(1, 3)
+        att_score = att_score.transpose(1, 3)
+        for i in range(mask.size(0)):
+            att_score[:, :, i, :] = att_score[:, :, i, :].masked_fill(mask[i], -FILL_INF)
+        att_score = att_score.transpose(1, 3)
+
+        # att_score = att_score.transpose(2, 3).transpose(0, 2)
+        # mask = mask.t()
+        # for i in range(att_score.size(0)):
+        #     att_score[i] = att_score[i].masked_fill(mask, -FILL_INF)
+        # #att_score = att_score.masked_fill(mask, -FILL_INF)
+        # att_score = att_score.transpose(0, 2).transpose(3, 2)
         return att_score
 
     def forward(self, w, r, r_w_bias, r_r_bias, attn_mask=None, mems=None):
         qlen, rlen, bsz = w.size(0), r.size(0), w.size(1)
-        # print(w.size(),r.size())
         if mems is not None:
             cat = torch.cat([mems, w], 0)
             if self.pre_lnorm:
@@ -270,12 +275,11 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
 
         rr_head_q = w_head_q + r_r_bias
         BD = torch.einsum('ibnd,jnd->ijbn', [rr_head_q, r_head_k])  # qlen x klen x bsz x n_head
-        BD = self._rel_shift(BD)
+        BD = _rel_shift(BD)
 
         # [qlen x klen x bsz x n_head]
         attn_score = AC + BD
         attn_score.mul_(self.scale)
-        # print(attn_score.size())
         #### compute attention probability
         # if attn_mask is not None and attn_mask.any().item():
         #     if attn_mask.dim() == 2:
@@ -288,10 +292,8 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
         # [qlen x klen x bsz x n_head]
         attn_prob = F.softmax(attn_score, dim=1)
         attn_prob = self.dropatt(attn_prob)
-
         #### compute attention vector
         attn_vec = torch.einsum('ijbn,jbnd->ibnd', [attn_prob, w_head_v])
-
         # [qlen x bsz x n_head x d_head]
         attn_vec = attn_vec.contiguous().view(
             attn_vec.size(0), attn_vec.size(1), self.n_head * self.d_head)
@@ -299,7 +301,6 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
         ##### linear projection
         attn_out = self.o_net(attn_vec)
         attn_out = self.drop(attn_out)
-
         if self.pre_lnorm:
             ##### residual connection
             output = w + attn_out
@@ -311,7 +312,7 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
 
 
 class RelPartialLearnableDecoderLayer(nn.Module):
-    def __init__(self, n_head, d_model, d_head, dropout,pos_ff,
+    def __init__(self, n_head, d_model, d_head, dropout, pos_ff,
                  **kwargs):
         super(RelPartialLearnableDecoderLayer, self).__init__()
 
@@ -326,5 +327,4 @@ class RelPartialLearnableDecoderLayer(nn.Module):
                                attn_mask=dec_attn_mask,
                                mems=mems)
         output = self.pos_ff(output)
-
         return output

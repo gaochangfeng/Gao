@@ -3,11 +3,9 @@ from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
 from espnet.nets.pytorch_backend.transformer.repeat import repeat
 from espnet.nets.pytorch_backend.transformer.embedding import PositionalEncoding
 from espnet.nets.pytorch_backend.transformer.subsampling import Conv2dSubsampling
-from espnet.nets.pytorch_backend.transformer.encoder_layer import EncoderLayer as EncoderLayerTD
-from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
 from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import PositionwiseFeedForward
-from MyNet.encoder_layer import EncoderLayer as EncoderLayerXL
-
+from espnet.nets.pytorch_backend.transformer.encoder_layer import EncoderLayer
+from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
 
 class Encoder(torch.nn.Module):
     """TransformerXL encoder module,@ref "Transformer-XL_AttentiveLanguageModels BeyondaFixed-LengthContext"
@@ -29,8 +27,7 @@ class Encoder(torch.nn.Module):
         if False, no additional linear will be applied. i.e. x -> x + att(x)
     """
 
-    def __init__(self, idim, time_len=0, ext_len=0,
-                 attention_type="memory",
+    def __init__(self, idim, time_len=8, mem_len=0, ext_len=0, future_len=0, abs_pos=True, rel_pos=False,
                  attention_dim=256,
                  attention_heads=4,
                  linear_units=2048,
@@ -44,6 +41,11 @@ class Encoder(torch.nn.Module):
                  concat_after=False):
         super(Encoder, self).__init__()
         self.idim = idim
+        self.time_len = time_len
+        self.ext_len = ext_len
+        self.future_len = future_len
+        self.abs_pos = abs_pos
+        self.rel_pos = rel_pos
         self.attention_dim = attention_dim
         self.attention_heads = attention_heads
         self.linear_units = linear_units
@@ -51,46 +53,46 @@ class Encoder(torch.nn.Module):
         self.input_layer = input_layer
         self.normalize_before = normalize_before
         self.concat_after = concat_after
-        self.attention_type = attention_type
         self.positional_dropout_rate = positional_dropout_rate
         self.pos_enc_class = pos_enc_class
         self._generateInputLayer()
-        if attention_type == "memory":
-            self.encoders = repeat(
-                num_blocks,
-                lambda: EncoderLayerXL(
-                    n_head=attention_heads,
-                    d_model=attention_dim,
-                    d_head=attention_dim // attention_heads,
-                    ext_len=ext_len,
-                    mem_len=time_len,
-                    dropout=dropout_rate,
-                    dropatt=attention_dropout_rate,
-                    pre_lnorm=normalize_before,
-                    pos_ff=PositionwiseFeedForward(attention_dim, linear_units, dropout_rate)
-                )
+
+        # self.encoders = repeat(
+        #     num_blocks,
+        #     lambda: EncoderLayer(
+        #         n_head=attention_heads,
+        #         d_model=attention_dim,
+        #         d_head=attention_dim // attention_heads,
+        #         ext_len=ext_len,
+        #         mem_len=mem_len,
+        #         tgt_len=time_len,
+        #         future_len=future_len,
+        #         rel_pos=rel_pos,
+        #         dropout=dropout_rate,
+        #         dropatt=attention_dropout_rate,
+        #         pre_lnorm=normalize_before,
+        #         pos_ff=PositionwiseFeedForward(attention_dim, linear_units, dropout_rate)
+        #     )
+        # )
+        self.encoders = repeat(
+            num_blocks,
+            lambda: EncoderLayer(
+                attention_dim,
+                MultiHeadedAttention(attention_heads, attention_dim, attention_dropout_rate),
+                PositionwiseFeedForward(attention_dim, linear_units, dropout_rate),
+                dropout_rate,
+                normalize_before,
+                concat_after
             )
-        elif attention_type == "traditional":
-            self.encoders = repeat(
-                num_blocks,
-                lambda: EncoderLayerTD(
-                    attention_dim,
-                    MultiHeadedAttention(attention_heads, attention_dim, attention_dropout_rate),
-                    PositionwiseFeedForward(attention_dim, linear_units, dropout_rate),
-                    dropout_rate,
-                    normalize_before,
-                    concat_after
-                )
-            )
-        else:
-            ValueError("only memory or traditional can be used")
+        )
+
         if self.normalize_before:
             self.after_norm = LayerNorm(attention_dim)
 
-    def forward(self, xs, masks=None):
+    def _forward(self, xs, masks=None):
         """Embed positions in tensor
 
-        :param torch.Tensor xs: input tensor
+        :param torch.Tensor xs: input tensor，(batch,time,dim)
         :param torch.Tensor masks: (batch,1,time),1 means data,zero means padding
         :return: position embedded tensor and mask
         :rtype Tuple[torch.Tensor, torch.Tensor]:
@@ -112,17 +114,53 @@ class Encoder(torch.nn.Module):
                 torch.nn.Dropout(self.dropout_rate),
                 torch.nn.ReLU(),
             )
-            if self.attention_type == "traditional":
-                self.embed.add_module(name="pos_enc", module=self.pos_enc_class(self.attention_dim, self.positional_dropout_rate))
+            if self.abs_pos:
+                self.embed.add_module(name="pos_enc",
+                                      module=self.pos_enc_class(self.attention_dim, self.positional_dropout_rate))
         elif self.input_layer == "conv2d":
             self.embed = Conv2dSubsampling(self.idim, self.attention_dim, self.dropout_rate)
         elif self.input_layer == "embed":
             self.embed = torch.nn.Sequential(
                 torch.nn.Embedding(self.idim, self.attention_dim),
             )
-            if self.attention_type == "traditional":
+            if self.abs_pos:
                 self.embed.add_module("pos_enc", self.pos_enc_class(self.attention_dim, self.positional_dropout_rate))
         elif isinstance(self.input_layer, torch.nn.Module):
             self.embed = self.input_layer
         else:
             raise ValueError("unknown input_layer: " + self.input_layer)
+
+    def chunkdevide(self, xs, masks):
+        r_xs = torch.ones(xs.size(0), self.future_len, xs.size(2)).to(xs.device)
+        r_masks = torch.zeros(masks.size(0), 1, self.future_len).byte().to(masks.device)
+        l_xs = torch.ones(xs.size(0), self.ext_len, xs.size(2)).to(xs.device)
+        l_masks = torch.zeros(masks.size(0), 1, self.ext_len).byte().to(masks.device)
+        xs = torch.cat([l_xs,xs,r_xs],dim=1)
+        masks = torch.cat([l_masks,masks,r_masks],dim=2)
+        m_chunk = []
+        m_chunk_mask = []
+        i=0
+        while (i+self.ext_len+self.time_len+self.future_len) < xs.size(1):
+            m_chunk.append(xs[:,i:i+self.ext_len+self.time_len+self.future_len])
+            m_chunk_mask.append(masks[:,:,i:i+self.ext_len+self.time_len+self.future_len])
+            i = i+self.ext_len
+        m_chunk.append(xs[:,i:i+self.time_len+self.future_len])
+        m_chunk_mask.append(masks[:,:,i:i+self.time_len+self.future_len])
+        return m_chunk, m_chunk_mask
+
+    def forward(self,xs, masks=None):
+        if self.time_len ==0:
+            xs,masks = self.forward(xs,masks)
+        else:
+            xs_list=[]
+            mask_list=[]
+            chunks,chunks_mask = self.chunkdevide(xs,masks)
+            for i in range(len(chunks)):
+                xss,maskss = self._forward(chunks[i],chunks_mask[i])
+                xss=xss[:,self.ext_len//4:(self.ext_len+self.time_len)//4]
+                maskss=maskss[:,:,self.ext_len//4:(self.ext_len+self.time_len)//4]
+                xs_list.append(xss)
+                mask_list.append(maskss)
+            xs = torch.cat(xs_list, dim=1)
+            masks = torch.cat(mask_list,dim=2)
+        return xs,masks

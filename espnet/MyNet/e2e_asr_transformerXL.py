@@ -16,11 +16,10 @@ from espnet.nets.pytorch_backend.nets_utils import make_pad_mask
 from espnet.nets.pytorch_backend.nets_utils import th_accuracy
 from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
 from espnet.nets.pytorch_backend.transformer.decoder import Decoder
-#from espnet.nets.pytorch_backend.transformer.encoder import Encoder
 from espnet.nets.pytorch_backend.transformer.label_smoothing_loss import LabelSmoothingLoss
 from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
 from espnet.nets.pytorch_backend.transformer.plot import PlotAttentionReport
-from MyNet.encoder import Encoder
+from espnet.MyNet.encoder import Encoder
 
 def subsequent_mask(size, device="cpu", dtype=torch.uint8):
     """Create mask for subsequent steps (1, size, size)
@@ -61,11 +60,19 @@ class E2E(ASRInterface, torch.nn.Module):
         group.add_argument("--transformer-encoder-type", type=str, default="memory",
                            choices=["memory", "traditional"],
                            help='transformer encoder attention type')
+        group.add_argument("--transformer-encoder-chunk-len", type=int, default=8,
+                           help='transformer chunk size, only used when transformer-encoder-type is memory')
         group.add_argument("--transformer-encoder-mem-len", type=int, default=0,
                            help='transformer encoder memory length,only used when transformer-encoder-type is memory')
         group.add_argument("--transformer-encoder-ext-len", type=int, default=0,
                            help='transformer encoder extra memory length,only used when transformer-encoder-type is '
                                 'memory')
+        group.add_argument("--transformer-encoder-future-len", type=int, default=0,
+                           help='future data of the encoder')
+        group.add_argument("--transformer-encoder-abs-embed", type=bool, default=False,
+                           help='whether the network use absolute embed')
+        group.add_argument("--transformer-encoder-rel-embed", type=bool, default=True,
+                           help='whether the network us reality embed')
         return parser
 
     @property
@@ -78,9 +85,12 @@ class E2E(ASRInterface, torch.nn.Module):
             args.transformer_attn_dropout_rate = args.dropout_rate
         self.encoder = Encoder(
             idim=idim,
-            time_len=args.transformer_encoder_mem_len,
+            time_len=args.transformer_encoder_chunk_len,
+            mem_len=args.transformer_encoder_mem_len,
             ext_len=args.transformer_encoder_ext_len,
-            attention_type=args.transformer_encoder_type,
+            future_len=args.transformer_encoder_future_len,
+            abs_pos=args.transformer_encoder_abs_embed,
+            rel_pos=args.transformer_encoder_rel_embed,
             attention_dim=args.adim,
             attention_heads=args.aheads,
             linear_units=args.eunits,
