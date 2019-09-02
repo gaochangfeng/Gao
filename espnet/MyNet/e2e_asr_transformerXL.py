@@ -57,9 +57,6 @@ class E2E(ASRInterface, torch.nn.Module):
                            help='optimizer warmup steps')
         group.add_argument('--transformer-length-normalized-loss', default=True, type=strtobool,
                            help='normalize loss by length')
-        group.add_argument("--transformer-encoder-type", type=str, default="memory",
-                           choices=["memory", "traditional"],
-                           help='transformer encoder attention type')
         group.add_argument("--transformer-encoder-chunk-len", type=int, default=8,
                            help='transformer chunk size, only used when transformer-encoder-type is memory')
         group.add_argument("--transformer-encoder-mem-len", type=int, default=0,
@@ -69,10 +66,12 @@ class E2E(ASRInterface, torch.nn.Module):
                                 'memory')
         group.add_argument("--transformer-encoder-future-len", type=int, default=0,
                            help='future data of the encoder')
-        group.add_argument("--transformer-encoder-abs-embed", type=bool, default=False,
+        group.add_argument("--transformer-encoder-abs-embed", type=int, default=1,
                            help='whether the network use absolute embed')
-        group.add_argument("--transformer-encoder-rel-embed", type=bool, default=True,
+        group.add_argument("--transformer-encoder-rel-embed", type=int, default=0,
                            help='whether the network us reality embed')
+        group.add_argument("--transformer-encoder-use-memory", type=int, default=0,
+                           help='whether the network us memory to store history')
         return parser
 
     @property
@@ -91,6 +90,7 @@ class E2E(ASRInterface, torch.nn.Module):
             future_len=args.transformer_encoder_future_len,
             abs_pos=args.transformer_encoder_abs_embed,
             rel_pos=args.transformer_encoder_rel_embed,
+            use_mem=args.transformer_encoder_use_memory,
             attention_dim=args.adim,
             attention_heads=args.aheads,
             linear_units=args.eunits,

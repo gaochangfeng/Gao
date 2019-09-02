@@ -83,10 +83,14 @@ class EncoderLayer(nn.Module):
         # the tokens from `mlen + qlen - self.ext_len - self.mem_len`
         # to `mlen + qlen - self.ext_len`.
         with torch.no_grad():
-            end_idx = mems.size(0) + max(0, qlen - 0 - self.ext_len)
+            end_idx = self.mem_len + max(0, self.ext_len)
             beg_idx = max(0, end_idx - self.mem_len)
-            cat = torch.cat([mems, hids], dim=0)
-            new_mems = cat[beg_idx:end_idx].detach()
+            cat = hids
+            new_mems = cat[beg_idx:end_idx].detach().to(hids.device)
+            # if self.rel_pos:
+            #     new_mems = cat[beg_idx:end_idx].detach().to(hids.device)
+            # else:
+            #     new_mems = cat[:,beg_idx:end_idx].detach().to(hids.device)
             return new_mems
 
     def forward(self, x, masks):
@@ -98,7 +102,7 @@ class EncoderLayer(nn.Module):
         :rtype: Tuple[torch.Tensor, torch.Tensor]
         """
         #print("in", x.size(), masks.size())
-        if self.mems is None:
+        if self.mems is None and self.mem_len>0:
             self.init_mems()
         if self.rel_pos:
             hidden,_ = self.rel_forward(x,masks)
@@ -119,21 +123,20 @@ class EncoderLayer(nn.Module):
         qlen = x.size(0)
         self.mems = self._update_mems(x, self.mems, qlen, self.mem_len)
         x = hidden.transpose(0, 1)
-
         return x,masks
 
     def abs_forward(self, x, masks):
         qlen = x.size(1)
         if self.mems is not None and self.mems.dim() > 1:
-            #print('mems',self.mems.size())
             x = torch.cat([self.mems.transpose(0, 1), x], dim=1)
             if self.mem_len > 0:
                 m_mask = torch.ones(masks.size(0), 1, self.mems.size(0)).byte().to(masks.device)
                 masks = torch.cat([m_mask, masks], dim=-1)
             x, masks = self.layer(x, masks)
             self.mems = self._update_mems(x.transpose(0,1), self.mems, qlen, self.mem_len)
-        else:
+        elif self.mems is not None:
             x, masks = self.layer(x, masks)
             self.mems = self._update_mems(x.transpose(0, 1), self.mems, qlen, self.mem_len)
-
+        else:
+            x, masks = self.layer(x, masks)
         return x,masks
