@@ -26,7 +26,7 @@ class EncoderLayer(nn.Module):
                  dropout, dropatt, pre_lnorm, tgt_len=None,
                  ext_len=0, mem_len=0, future_len=0, rel_pos=True):
         super(EncoderLayer, self).__init__()
-        self.mems = None
+        self.register_buffer('mems',None)
         self.n_head = n_head
         self.d_head = d_head
         self.d_model = d_model
@@ -56,6 +56,7 @@ class EncoderLayer(nn.Module):
             self.mems = None
 
     def _forward(self, dec_inp, mask, mems=None):
+        #print(dec_inp.size(),mask.size())
         qlen = dec_inp.size(0)
         word_emb = dec_inp
         mlen = mems.size(0) if mems is not None else 0

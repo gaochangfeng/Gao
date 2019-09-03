@@ -221,17 +221,21 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
         self.r_net = nn.Linear(self.d_model, self.n_head * self.d_head, bias=False)
 
     def _maskscore(self, att_score, mask):
+        print(mask.size())
         if mask is None:
             return att_score
         m_len = att_score.size(1) - mask.size(1)
         if m_len > 0:
-            m_mask = torch.zeros(mask.size(0), m_len).byte().to(mask.device)
-            mask = torch.cat([m_mask, mask], dim=1)
+            #m_mask = torch.zeros(mask.size(0), m_len).byte().to(mask.device)
+            m_mask = [mask[:,0].unsqueeze(1)]*m_len
+            m_mask.append(mask)
+            mask = torch.cat(m_mask,dim=1)
+            #mask = torch.cat([m_mask, mask], dim=1)
         att_score = att_score.transpose(1, 3)
         for i in range(mask.size(0)):
             att_score[:, :, i, :] = att_score[:, :, i, :].masked_fill(mask[i], -FILL_INF)
         att_score = att_score.transpose(1, 3)
-
+        #print(mask)
         # att_score = att_score.transpose(2, 3).transpose(0, 2)
         # mask = mask.t()
         # for i in range(att_score.size(0)):
@@ -323,6 +327,7 @@ class RelPartialLearnableDecoderLayer(nn.Module):
         self.pos_ff = pos_ff
 
     def forward(self, dec_inp, r, r_w_bias, r_r_bias, dec_attn_mask=None, mems=None):
+        #print(dec_inp.size(),dec_attn_mask.size(),mems.size())
         output = self.dec_attn(dec_inp, r, r_w_bias, r_r_bias,
                                attn_mask=dec_attn_mask,
                                mems=mems)
