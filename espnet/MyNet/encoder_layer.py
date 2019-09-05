@@ -34,17 +34,20 @@ class EncoderLayer(nn.Module):
         self.rel_pos = rel_pos
         self.future_len = future_len
         self.tgt_len = tgt_len
-        self.pos_emb = RelPositionalEmbedding(self.d_model)
-        self.r_w_bias = nn.Parameter(torch.rand(size=[n_head, d_head]))
-        self.r_r_bias = nn.Parameter(torch.rand(size=[n_head, d_head]))
         if rel_pos:
             self.layer = RelPartialLearnableDecoderLayer(n_head=n_head, d_model=d_model, d_head=d_head,
                                                          dropout=dropout, pos_ff=pos_ff,
                                                          tgt_len=tgt_len, ext_len=ext_len, mem_len=mem_len,
                                                          dropatt=dropatt, pre_lnorm=pre_lnorm)
+            self.pos_emb = RelPositionalEmbedding(self.d_model)
+            self.r_w_bias = nn.Parameter(torch.rand(size=[n_head, d_head]))
+            self.r_r_bias = nn.Parameter(torch.rand(size=[n_head, d_head]))
         else:
             self.layer = AbsEncoderLayer(d_model, MultiHeadedAttention(n_head, d_model, dropatt),
                                          pos_ff, dropout, pre_lnorm, concat_after=False)
+            self.pos_emb = None
+            self.r_w_bias = None
+            self.r_r_bias = None
         self.drop = nn.Dropout(dropout)
         self.ext_len = ext_len
 

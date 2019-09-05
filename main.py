@@ -10,8 +10,8 @@ if __name__ == '__main__':
     mask = torch.ByteTensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]]).unsqueeze(-2)
     srcmask = ~make_pad_mask([1000, 90]).unsqueeze(-2)
     # encoder = Encoder(40,time_len=10,num_blocks=3,attention_type="traditional")
-    encoder = Encoder(40, time_len=64, mem_len=32, ext_len=32, future_len=64, num_blocks=2,
-                      rel_pos=True, abs_pos=True, use_mem=True)
+    encoder = Encoder(40, center_len=64, left_len=64, hop_len=64, right_len=64, num_blocks=2,
+                      rel_pos=1, abs_pos=1, use_mem=1)
     for i in range(3):
         b, masks = encoder(a[i], srcmask)
     ar = torch.randn(3, 900, 40)
