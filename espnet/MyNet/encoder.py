@@ -2,7 +2,7 @@ import torch
 from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
 from espnet.nets.pytorch_backend.transformer.repeat import repeat
 from espnet.nets.pytorch_backend.transformer.embedding import PositionalEncoding
-#from espnet.nets.pytorch_backend.transformer.subsampling import Conv2dSubsampling
+# from espnet.nets.pytorch_backend.transformer.subsampling import Conv2dSubsampling
 from espnet.MyNet.subsampling import Conv2dSubsamplingPos as Conv2dSubsampling
 from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import PositionwiseFeedForward
 from espnet.MyNet.encoder_layer import EncoderLayer
@@ -29,7 +29,7 @@ class Encoder(torch.nn.Module):
     """
 
     def __init__(self, idim, center_len=8, left_len=0, hop_len=0, right_len=0,
-                 abs_pos=True, rel_pos=False, use_mem=False,
+                 abs_pos=1, rel_pos=0, use_mem=1,
                  attention_dim=256,
                  attention_heads=4,
                  linear_units=2048,
@@ -44,7 +44,7 @@ class Encoder(torch.nn.Module):
         super(Encoder, self).__init__()
         self.idim = idim
         self.center_len = center_len
-        self.use_mem = use_mem !=0
+        self.use_mem = use_mem != 0
         self.left_len = left_len
         if self.use_mem != 0:
             self.mem_len = left_len
@@ -130,7 +130,7 @@ class Encoder(torch.nn.Module):
     def chunkdevide(self, xs, masks):
         chunk_left = self.left_len
         if self.use_mem:
-            chunk_left=0
+            chunk_left = 0
         r_xs = torch.ones(xs.size(0), self.right_len, xs.size(2)).to(xs.device)
         r_masks = torch.zeros(masks.size(0), 1, self.right_len).byte().to(masks.device)
         l_xs = torch.ones(xs.size(0), chunk_left, xs.size(2)).to(xs.device)
@@ -151,7 +151,7 @@ class Encoder(torch.nn.Module):
     def forward(self, xs, masks=None):
         chunk_left = self.left_len
         if self.use_mem:
-            chunk_left=0
+            chunk_left = 0
         if masks is None:
             masks = torch.ones(xs.size(0), 1, xs.size(1)).byte().to(xs.device)
         if self.center_len == 0:
@@ -162,7 +162,7 @@ class Encoder(torch.nn.Module):
             chunks, chunks_mask = self.chunkdevide(xs, masks)
             for i in range(len(chunks)):
                 if self.abs_pos:
-                    xss, maskss = self._forward(chunks[i], chunks_mask[i], i*self.hop_len)
+                    xss, maskss = self._forward(chunks[i], chunks_mask[i], i * self.hop_len//4)
                 else:
                     xss, maskss = self._forward(chunks[i], chunks_mask[i], 0)
                 xss = xss[:, chunk_left // 4:(chunk_left + self.center_len) // 4]
