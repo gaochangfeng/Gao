@@ -131,21 +131,6 @@ class EncoderLayer(nn.Module):
         # x = hidden.transpose(0, 1)
         return x,masks
 
-    # def abs_forward(self, x, masks):
-    #     qlen = x.size(1)
-    #     if self.mems is not None and self.mems.dim() > 1:
-    #         x = torch.cat([self.mems.transpose(0, 1), x], dim=1)
-    #         if self.mem_len > 0:
-    #             m_mask = torch.ones(masks.size(0), 1, self.mems.size(0)).byte().to(masks.device)
-    #             masks = torch.cat([m_mask, masks], dim=-1)
-    #         x, masks = self.layer(x, masks)
-    #         self.mems = self._update_mems(x.transpose(0,1), self.mems, qlen, self.mem_len)
-    #     elif self.mems is not None:
-    #         x, masks = self.layer(x, masks)
-    #         self.mems = self._update_mems(x.transpose(0, 1), self.mems, qlen, self.mem_len)
-    #     else:
-    #         x, masks = self.layer(x, masks)
-    #     return x,masks
     def abs_forward(self, x, masks):
         qlen = x.size(1)
         x, masks = self.layer(x,self.mems,masks)
