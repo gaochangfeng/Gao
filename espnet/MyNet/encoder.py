@@ -46,7 +46,7 @@ class Encoder(torch.nn.Module):
         self.center_len = center_len
         self.use_mem = use_mem != 0
         self.left_len = left_len
-        if self.use_mem != 0:
+        if self.use_mem:
             self.mem_len = left_len
         else:
             self.mem_len = 0
@@ -131,8 +131,8 @@ class Encoder(torch.nn.Module):
         chunk_left = self.left_len
         if self.use_mem:
             chunk_left = 0
-        r_xs = torch.ones(xs.size(0), self.right_len, xs.size(2)).to(xs.device)
-        r_masks = torch.zeros(masks.size(0), 1, self.right_len).byte().to(masks.device)
+        r_xs = torch.ones(xs.size(0), self.right_len+4, xs.size(2)).to(xs.device)
+        r_masks = torch.zeros(masks.size(0), 1, self.right_len+4).byte().to(masks.device)
         l_xs = torch.ones(xs.size(0), chunk_left, xs.size(2)).to(xs.device)
         l_masks = torch.zeros(masks.size(0), 1, chunk_left).byte().to(masks.device)
         xs = torch.cat([l_xs, xs, r_xs], dim=1)
