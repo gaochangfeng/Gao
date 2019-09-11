@@ -7,6 +7,7 @@ from espnet.MyNet.subsampling import Conv2dSubsamplingPos as Conv2dSubsampling
 from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import PositionwiseFeedForward
 from espnet.MyNet.encoder_layer import EncoderLayer
 
+MaxSeqLen = 50000
 
 class Encoder(torch.nn.Module):
     """TransformerXL encoder module,@ref "Transformer-XL_AttentiveLanguageModels BeyondaFixed-LengthContext"
@@ -129,23 +130,31 @@ class Encoder(torch.nn.Module):
 
     def chunkdevide(self, xs, masks):
         chunk_left = self.left_len
-        if self.use_mem:
+        if self.use_mem or self.left_len>=MaxSeqLen:
             chunk_left = 0
+        l_xs = torch.empty(0).to(xs.device)
+        l_masks = torch.empty(0).byte().to(masks.device)
         r_xs = torch.ones(xs.size(0), self.right_len+4, xs.size(2)).to(xs.device)
         r_masks = torch.zeros(masks.size(0), 1, self.right_len+4).byte().to(masks.device)
-        l_xs = torch.ones(xs.size(0), chunk_left, xs.size(2)).to(xs.device)
-        l_masks = torch.zeros(masks.size(0), 1, chunk_left).byte().to(masks.device)
         xs = torch.cat([l_xs, xs, r_xs], dim=1)
         masks = torch.cat([l_masks, masks, r_masks], dim=2)
         m_chunk = []
         m_chunk_mask = []
         i = 0
         while (i + chunk_left + self.center_len + self.right_len) < xs.size(1):
-            m_chunk.append(xs[:, i:i + chunk_left + self.center_len + self.right_len])
-            m_chunk_mask.append(masks[:, :, i:i + chunk_left + self.center_len + self.right_len])
+            if self.left_len < MaxSeqLen:
+                m_chunk.append(xs[:, i:i + chunk_left + self.center_len + self.right_len])
+                m_chunk_mask.append(masks[:, :, i:i + chunk_left + self.center_len + self.right_len])
+            else:
+                m_chunk.append(xs[:, 0:i + self.center_len + self.right_len])
+                m_chunk_mask.append(masks[:, :, 0:i + self.center_len + self.right_len])
             i = i + self.hop_len
-        m_chunk.append(xs[:, i:])
-        m_chunk_mask.append(masks[:, :, i:])
+        if self.left_len < MaxSeqLen:
+            m_chunk.append(xs[:, i:])
+            m_chunk_mask.append(masks[:, :, i:])
+        else:
+            m_chunk.append(xs[:, :])
+            m_chunk_mask.append(masks[:, :, :])
         return m_chunk, m_chunk_mask
 
     def forward(self, xs, masks=None):
@@ -165,8 +174,12 @@ class Encoder(torch.nn.Module):
                     xss, maskss = self._forward(chunks[i], chunks_mask[i], i * self.hop_len//4)
                 else:
                     xss, maskss = self._forward(chunks[i], chunks_mask[i], 0)
-                xss = xss[:, chunk_left // 4:(chunk_left + self.center_len) // 4]
-                maskss = maskss[:, :, chunk_left // 4:(chunk_left + self.center_len) // 4]
+                if self.left_len<MaxSeqLen:
+                    xss = xss[:, chunk_left // 4:(chunk_left + self.center_len) // 4]
+                    maskss = maskss[:, :, chunk_left // 4:(chunk_left + self.center_len) // 4]
+                else:
+                    xss = xss[:, i*self.hop_len // 4:(i*self.hop_len + self.center_len) // 4]
+                    maskss = maskss[:, :, i*self.hop_len // 4:(i*self.hop_len + self.center_len) // 4]
                 xs_list.append(xss)
                 mask_list.append(maskss)
             xs = torch.cat(xs_list, dim=1)

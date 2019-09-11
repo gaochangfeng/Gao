@@ -64,7 +64,6 @@ class EncoderLayer(nn.Module):
             beg_idx = max(0, end_idx - self.mem_len)
             cat = torch.cat([mems, hids], dim=1)
             new_mems = cat[:, beg_idx:end_idx].detach().to(hids.device)
-            print(new_mems.size())
             return new_mems
 
     def forward(self, x, masks):
