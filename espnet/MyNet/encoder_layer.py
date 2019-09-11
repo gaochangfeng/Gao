@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from espnet.MyNet.repos_attention import CashEncoderLayer
 from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
-
+#from espnet.MyNet.attention.win_attention import  WinMultiHeadedAttention as MultiHeadedAttention
 
 class EncoderLayer(nn.Module):
     """Encoder layer module
@@ -61,9 +61,10 @@ class EncoderLayer(nn.Module):
             else:
                 mem_len = 0
             end_idx = mem_len + max(0, self.ext_len)
-            beg_idx = max(0, end_idx - mem_len)
+            beg_idx = max(0, end_idx - self.mem_len)
             cat = torch.cat([mems, hids], dim=1)
             new_mems = cat[:, beg_idx:end_idx].detach().to(hids.device)
+            print(new_mems.size())
             return new_mems
 
     def forward(self, x, masks):

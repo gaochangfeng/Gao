@@ -48,8 +48,8 @@ class WinMultiHeadedAttention(nn.Module):
         q = q.transpose(1, 2)  # (batch, head, time1, d_k)
         k = k.transpose(1, 2)  # (batch, head, time2, d_k)
         v = v.transpose(1, 2)  # (batch, head, time2, d_k)
-        scale = self.getwintensor(query.size(1),key.size(1))
         scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k)  # (batch, head, time1, time2)
+        scale = self.getwintensor(query.size(1), key.size(1)).to(scores.device)
         scores = scores * scale
         if mask is not None:
             mask = mask.unsqueeze(1).eq(0)  # (batch, 1, time1, time2)
@@ -63,7 +63,7 @@ class WinMultiHeadedAttention(nn.Module):
         x = x.transpose(1, 2).contiguous().view(n_batch, -1, self.h * self.d_k)  # (batch, time1, d_model)
         return self.linear_out(x)  # (batch, time1, d_model)
 
-    def genwindows(self, reverse=False, max_len=5000):
+    def genwindows(self, max_len=5000):
         if max_len == 0:
             return None
         x = torch.arange(0, max_len / 2)
