@@ -142,14 +142,14 @@ class Encoder(torch.nn.Module):
         m_chunk_mask = []
         i = 0
         while (i + chunk_left + self.center_len + self.right_len) < xs.size(1):
-            if self.left_len < MaxSeqLen:
+            if chunk_left < MaxSeqLen:
                 m_chunk.append(xs[:, i:i + chunk_left + self.center_len + self.right_len])
                 m_chunk_mask.append(masks[:, :, i:i + chunk_left + self.center_len + self.right_len])
             else:
                 m_chunk.append(xs[:, 0:i + self.center_len + self.right_len])
                 m_chunk_mask.append(masks[:, :, 0:i + self.center_len + self.right_len])
             i = i + self.hop_len
-        if self.left_len < MaxSeqLen:
+        if self.left_len < MaxSeqLen or self.use_mem:
             m_chunk.append(xs[:, i:])
             m_chunk_mask.append(masks[:, :, i:])
         else:
@@ -174,7 +174,7 @@ class Encoder(torch.nn.Module):
                     xss, maskss = self._forward(chunks[i], chunks_mask[i], i * self.hop_len//4)
                 else:
                     xss, maskss = self._forward(chunks[i], chunks_mask[i], 0)
-                if self.left_len<MaxSeqLen:
+                if chunk_left<MaxSeqLen:
                     xss = xss[:, chunk_left // 4:(chunk_left + self.center_len) // 4]
                     maskss = maskss[:, :, chunk_left // 4:(chunk_left + self.center_len) // 4]
                 else:

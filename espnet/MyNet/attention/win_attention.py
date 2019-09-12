@@ -93,6 +93,6 @@ class WinMultiHeadedAttention(nn.Module):
                 r_win = self.getwindowsline(r_len,False)
                 line_win = torch.cat([l_win,torch.ones(1),r_win],dim=0)
                 line_list.append(line_win)
-            win_tensor = torch.stack(line_list)
+            win_tensor = torch.stack(line_list).detach()
         win_tensor.requires_grad = False
         return win_tensor
