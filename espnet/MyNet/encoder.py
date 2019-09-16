@@ -132,8 +132,8 @@ class Encoder(torch.nn.Module):
         chunk_left = self.left_len
         if self.use_mem or self.left_len>=MaxSeqLen:
             chunk_left = 0
-        l_xs = torch.empty(0).to(xs.device)
-        l_masks = torch.empty(0).byte().to(masks.device)
+        l_xs = torch.ones(xs.size(0), chunk_left, xs.size(2)).to(xs.device)
+        l_masks = torch.zeros(masks.size(0), 1, chunk_left).byte().to(masks.device)
         r_xs = torch.ones(xs.size(0), self.right_len+4, xs.size(2)).to(xs.device)
         r_masks = torch.zeros(masks.size(0), 1, self.right_len+4).byte().to(masks.device)
         xs = torch.cat([l_xs, xs, r_xs], dim=1)
