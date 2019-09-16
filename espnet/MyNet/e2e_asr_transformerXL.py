@@ -71,6 +71,9 @@ class E2E(ASRInterface, torch.nn.Module):
                            help='whether the network us reality embed')
         group.add_argument("--transformer-encoder-use-memory", type=int, default=0,
                            help='whether the network us memory to store history')
+        group.add_argument("--transformer-encoder-att-type", type=str, default="mta",
+                           choices=["mta", "win", "smooth"],
+                           help='transformer encoder attention type')
         return parser
 
     @property
@@ -90,6 +93,7 @@ class E2E(ASRInterface, torch.nn.Module):
             abs_pos=args.transformer_encoder_abs_embed,
             rel_pos=args.transformer_encoder_rel_embed,
             use_mem=args.transformer_encoder_use_memory,
+            att_type=args.transformer_encoder_att_type,
             attention_dim=args.adim,
             attention_heads=args.aheads,
             linear_units=args.eunits,

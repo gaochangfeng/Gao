@@ -3,7 +3,9 @@ import torch.nn as nn
 from espnet.MyNet.repos_attention import CashEncoderLayer
 from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
 from espnet.nets.pytorch_backend.transformer.embedding import PositionalEncoding
-#from espnet.MyNet.attention.win_attention import  WinMultiHeadedAttention as MultiHeadedAttention
+from espnet.MyNet.attention.win_attention import  WinMultiHeadedAttention
+from espnet.MyNet.attention.win_attention import SmoothMultiHeadedAttention
+
 
 class EncoderLayer(nn.Module):
     """Encoder layer module
@@ -21,7 +23,7 @@ class EncoderLayer(nn.Module):
     :param int pre_lnorm: the way to normalise the data
     """
 
-    def __init__(self, n_head, d_model, d_head, pos_ff,
+    def __init__(self, n_head, d_model, d_head, pos_ff,att_type,
                  dropout, dropatt, pre_lnorm, tgt_len=None,
                  ext_len=0, mem_len=0, future_len=0, rel_pos=True):
         super(EncoderLayer, self).__init__()
@@ -33,8 +35,17 @@ class EncoderLayer(nn.Module):
         self.rel_pos = rel_pos
         self.future_len = future_len
         self.tgt_len = tgt_len
+        self.att = MultiHeadedAttention(n_head, d_model, dropatt)
+        if att_type == "mta":
+            self.att = MultiHeadedAttention(n_head, d_model, dropatt)
+        elif att_type == "win":
+            self.att = WinMultiHeadedAttention(n_head, d_model, dropatt)
+        elif att_type == "smooth":
+            self.att = SmoothMultiHeadedAttention(n_head, d_model, dropatt)
+        else:
+            raise ValueError("unknown attention type: " + att_type)
 
-        self.layer = CashEncoderLayer(d_model, MultiHeadedAttention(n_head, d_model, dropatt),
+        self.layer = CashEncoderLayer(d_model, self.att,
                                       pos_ff, dropout, pre_lnorm, concat_after=False)
 
         self.drop = nn.Dropout(dropout)

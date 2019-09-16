@@ -30,7 +30,7 @@ class Encoder(torch.nn.Module):
     """
 
     def __init__(self, idim, center_len=8, left_len=0, hop_len=0, right_len=0,
-                 abs_pos=1, rel_pos=0, use_mem=1,
+                 abs_pos=1, rel_pos=0, use_mem=1,att_type="mta",
                  attention_dim=256,
                  attention_heads=4,
                  linear_units=2048,
@@ -72,6 +72,7 @@ class Encoder(torch.nn.Module):
                 n_head=attention_heads,
                 d_model=attention_dim,
                 d_head=attention_dim // attention_heads,
+                att_type=att_type,
                 ext_len=hop_len // 4,
                 mem_len=self.mem_len // 4,
                 tgt_len=center_len,
