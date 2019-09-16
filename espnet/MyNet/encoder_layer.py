@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from espnet.MyNet.repos_attention import CashEncoderLayer
 from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
+from espnet.nets.pytorch_backend.transformer.embedding import PositionalEncoding
 #from espnet.MyNet.attention.win_attention import  WinMultiHeadedAttention as MultiHeadedAttention
 
 class EncoderLayer(nn.Module):
@@ -38,6 +39,11 @@ class EncoderLayer(nn.Module):
 
         self.drop = nn.Dropout(dropout)
         self.ext_len = ext_len
+        self.rel_pos = rel_pos
+        if rel_pos:
+            self.re_pos_embed = PositionalEncoding(self.d_model, dropout)
+        else:
+            self.re_pos_embed = None
 
     def init_mems(self):
         param = next(self.parameters())
@@ -82,6 +88,8 @@ class EncoderLayer(nn.Module):
         return x, masks
 
     def abs_forward(self, x, masks):
+        if self.rel_pos:
+            x = self.re_pos_embed(x)
         x, masks = self.layer(x, self.mems, masks)
         self.mems = self._update_mems(x, self.mems)
         return x, masks
