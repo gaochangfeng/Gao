@@ -1,13 +1,14 @@
 import torch
 from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
-from espnet.nets.pytorch_backend.transformer.repeat import repeat
 from espnet.nets.pytorch_backend.transformer.embedding import PositionalEncoding
-# from espnet.nets.pytorch_backend.transformer.subsampling import Conv2dSubsampling
-from espnet.MyNet.subsampling import Conv2dSubsamplingPos as Conv2dSubsampling
+from espnet.MyNet.modules.subsampling import Conv2dSubsamplingPos as Conv2dSubsampling
 from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import PositionwiseFeedForward
-from espnet.MyNet.encoder_layer import EncoderLayer
+from espnet.MyNet.modules.encoder_layer import EncoderLayer
+from espnet.MyNet.modules.subsampling import NormalSubsamplingPos
+from espnet.MyNet.modules.subsampling import PoolSubsampling
 
 MaxSeqLen = 50000
+
 
 class Encoder(torch.nn.Module):
     """TransformerXL encoder module,@ref "Transformer-XL_AttentiveLanguageModels BeyondaFixed-LengthContext"
@@ -30,7 +31,8 @@ class Encoder(torch.nn.Module):
     """
 
     def __init__(self, idim, center_len=8, left_len=0, hop_len=0, right_len=0,
-                 abs_pos=1, rel_pos=0, use_mem=1,att_type="mta",
+                 abs_pos=1, rel_pos=0, use_mem=1, att_type="mta",
+                 subpos=None, subtype="normal",
                  attention_dim=256,
                  attention_heads=4,
                  linear_units=2048,
@@ -43,6 +45,8 @@ class Encoder(torch.nn.Module):
                  normalize_before=True,
                  concat_after=False):
         super(Encoder, self).__init__()
+        if subpos is None:
+            subpos = [0, 0]
         self.idim = idim
         self.center_len = center_len
         self.use_mem = use_mem != 0
@@ -64,27 +68,14 @@ class Encoder(torch.nn.Module):
         self.concat_after = concat_after
         self.positional_dropout_rate = positional_dropout_rate
         self.pos_enc_class = pos_enc_class
+        self.subpos = subpos
+        self.subtype = subtype
+        self.num_blocks = num_blocks
+        self.attention_dropout_rate = attention_dropout_rate
+        self.att_type = att_type
+        self.encoders = torch.nn.ModuleList()
         self._generateInputLayer()
-
-        self.encoders = repeat(
-            num_blocks,
-            lambda: EncoderLayer(
-                n_head=attention_heads,
-                d_model=attention_dim,
-                d_head=attention_dim // attention_heads,
-                att_type=att_type,
-                ext_len=hop_len // 4,
-                mem_len=self.mem_len // 4,
-                tgt_len=center_len,
-                future_len=right_len,
-                rel_pos=rel_pos,
-                dropout=dropout_rate,
-                dropatt=attention_dropout_rate,
-                pre_lnorm=normalize_before,
-                pos_ff=PositionwiseFeedForward(attention_dim, linear_units, dropout_rate)
-            )
-        )
-
+        self._generateEncoderLayer()
         if self.normalize_before:
             self.after_norm = LayerNorm(attention_dim)
 
@@ -100,7 +91,8 @@ class Encoder(torch.nn.Module):
             xs, masks = self.embed(xs, masks, pos)
         else:
             xs = self.embed(xs)
-        xs, masks = self.encoders(xs, masks)
+        for i, l in enumerate(self.encoders):
+            xs,masks = self.encoders[i](xs,masks)
         if self.normalize_before:
             xs = self.after_norm(xs)
         return xs, masks
@@ -129,14 +121,50 @@ class Encoder(torch.nn.Module):
         else:
             raise ValueError("unknown input_layer: " + self.input_layer)
 
+    def _generateEncoderLayer(self):
+        subsize = 1
+        if self.input_layer == "conv2d":
+            subsize = 4
+            subsample = None
+        else:
+            if self.subtype == "max":
+                subsample = PoolSubsampling()
+            elif self.subtype == "average":
+                subsample = PoolSubsampling(type="average")
+            else:
+                subsample = NormalSubsamplingPos()
+        for i in range(self.num_blocks):
+            if self.input_layer != "conv2d":
+                for sp in self.subpos:
+                    if sp == i:
+                        self.encoders.append(subsample)
+                        subsize *= 2
+            self.encoders.append(
+                EncoderLayer(
+                    n_head=self.attention_heads,
+                    d_model=self.attention_dim,
+                    d_head=self.attention_dim // self.attention_heads,
+                    att_type=self.att_type,
+                    ext_len=self.hop_len // subsize,
+                    mem_len=self.mem_len // subsize,
+                    tgt_len=self.center_len,
+                    future_len=self.right_len,
+                    rel_pos=self.rel_pos,
+                    dropout=self.dropout_rate,
+                    dropatt=self.attention_dropout_rate,
+                    pre_lnorm=self.normalize_before,
+                    pos_ff=PositionwiseFeedForward(self.attention_dim, self.linear_units, self.dropout_rate)
+                )
+            )
+
     def chunkdevide(self, xs, masks):
         chunk_left = self.left_len
-        if self.use_mem or self.left_len>=MaxSeqLen:
+        if self.use_mem or self.left_len >= MaxSeqLen:
             chunk_left = 0
         l_xs = torch.ones(xs.size(0), chunk_left, xs.size(2)).to(xs.device)
         l_masks = torch.zeros(masks.size(0), 1, chunk_left).byte().to(masks.device)
-        r_xs = torch.ones(xs.size(0), self.right_len+4, xs.size(2)).to(xs.device)
-        r_masks = torch.zeros(masks.size(0), 1, self.right_len+4).byte().to(masks.device)
+        r_xs = torch.ones(xs.size(0), self.right_len + 4, xs.size(2)).to(xs.device)
+        r_masks = torch.zeros(masks.size(0), 1, self.right_len + 4).byte().to(masks.device)
         xs = torch.cat([l_xs, xs, r_xs], dim=1)
         masks = torch.cat([l_masks, masks, r_masks], dim=2)
         m_chunk = []
@@ -172,15 +200,15 @@ class Encoder(torch.nn.Module):
             chunks, chunks_mask = self.chunkdevide(xs, masks)
             for i in range(len(chunks)):
                 if self.abs_pos:
-                    xss, maskss = self._forward(chunks[i], chunks_mask[i], i * self.hop_len//4)
+                    xss, maskss = self._forward(chunks[i], chunks_mask[i], i * self.hop_len // 4)
                 else:
                     xss, maskss = self._forward(chunks[i], chunks_mask[i], 0)
-                if chunk_left<MaxSeqLen:
+                if chunk_left < MaxSeqLen:
                     xss = xss[:, chunk_left // 4:(chunk_left + self.center_len) // 4]
                     maskss = maskss[:, :, chunk_left // 4:(chunk_left + self.center_len) // 4]
                 else:
-                    xss = xss[:, i*self.hop_len // 4:(i*self.hop_len + self.center_len) // 4]
-                    maskss = maskss[:, :, i*self.hop_len // 4:(i*self.hop_len + self.center_len) // 4]
+                    xss = xss[:, i * self.hop_len // 4:(i * self.hop_len + self.center_len) // 4]
+                    maskss = maskss[:, :, i * self.hop_len // 4:(i * self.hop_len + self.center_len) // 4]
                 xs_list.append(xss)
                 mask_list.append(maskss)
             xs = torch.cat(xs_list, dim=1)

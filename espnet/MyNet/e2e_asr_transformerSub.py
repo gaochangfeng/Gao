@@ -19,7 +19,8 @@ from espnet.nets.pytorch_backend.transformer.decoder import Decoder
 from espnet.nets.pytorch_backend.transformer.label_smoothing_loss import LabelSmoothingLoss
 from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
 from espnet.nets.pytorch_backend.transformer.plot import PlotAttentionReport
-from espnet.MyNet.modules.encoder import Encoder
+from espnet.MyNet.modules.subencoder import Encoder
+
 
 def subsequent_mask(size, device="cpu", dtype=torch.uint8):
     """Create mask for subsequent steps (1, size, size)
@@ -74,6 +75,8 @@ class E2E(ASRInterface, torch.nn.Module):
         group.add_argument("--transformer-encoder-att-type", type=str, default="mta",
                            choices=["mta", "win", "smooth"],
                            help='transformer encoder attention type')
+        group.add_argument("--transformer-encoder-subpos", type=str, default="0,0",
+                           help='subsampling pos of the encoder,not used in conv2d input layer')
         return parser
 
     @property
@@ -101,7 +104,8 @@ class E2E(ASRInterface, torch.nn.Module):
             input_layer=args.transformer_input_layer,
             dropout_rate=args.dropout_rate,
             positional_dropout_rate=args.dropout_rate,
-            attention_dropout_rate=args.transformer_attn_dropout_rate
+            attention_dropout_rate=args.transformer_attn_dropout_rate,
+            subpos=[int(x) for x in args.transformer_encoder_subpos.split(",")]
         )
         self.decoder = Decoder(
             odim=odim,

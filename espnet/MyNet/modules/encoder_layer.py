@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from espnet.MyNet.repos_attention import CashEncoderLayer
+from espnet.MyNet.modules.repos_attention import CashEncoderLayer
 from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
 from espnet.nets.pytorch_backend.transformer.embedding import PositionalEncoding
 from espnet.MyNet.attention.win_attention import  WinMultiHeadedAttention
@@ -19,8 +19,8 @@ class EncoderLayer(nn.Module):
     :param int tgt_len: the length of the output, None mean the output length is equal to the input
     :param int ext_len: the extra length of memory
     :param int mem_len: the length of the memory,the real memory length is ext_len+mem_len
-    :param int dropatt: the rate to drop attention
-    :param int pre_lnorm: the way to normalise the data
+    :param float dropatt: the rate to drop attention
+    :param bool pre_lnorm: the way to normalise the data
     """
 
     def __init__(self, n_head, d_model, d_head, pos_ff,att_type,

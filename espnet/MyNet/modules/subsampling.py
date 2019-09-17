@@ -1,6 +1,6 @@
 import torch
 
-from espnet.MyNet.embedding import PositionalEncodingPos
+from espnet.MyNet.modules.embedding import PositionalEncodingPos
 
 
 class Conv2dSubsamplingPos(torch.nn.Module):
@@ -43,4 +43,36 @@ class Conv2dSubsamplingPos(torch.nn.Module):
         return x, x_mask[:, :, :-2:2][:, :, :-2:2]
 
 
+class NormalSubsamplingPos(torch.nn.Module):
+    """Normal subsampling
 
+    :param int samp_div: input subsample rate to 1/samp_div
+    """
+
+    def __init__(self, samp_div = 2):
+        super(NormalSubsamplingPos, self).__init__()
+        self.samp_div = samp_div
+
+    def forward(self, x, x_mask=None):
+        x = x[:, 0::self.samp_div]
+        if x_mask is not None:
+            x_mask = x_mask[:,:, 0::self.samp_div]
+        return x, x_mask[:,:,:x.size(1)]
+
+
+class PoolSubsampling(torch.nn.Module):
+    def __init__(self, samp_div = 2,type = "max"):
+        super(PoolSubsampling, self).__init__()
+        self.samp_div = samp_div
+        if type == "max":
+            self.pool = torch.nn.MaxPool1d(samp_div, stride=samp_div)
+        elif type == "average":
+            self.pool = torch.nn.AvgPool1d(samp_div, stride=samp_div)
+
+    def forward(self, x, x_mask=None):
+        x = x.transpose(1,2) # b c t
+        x = self.pool(x)
+        x = x.transpose(1,2).contiguous()
+        if x_mask is not None:
+            x_mask = x_mask[:,:, 0::self.samp_div]
+        return x, x_mask[:,:,:x.size(1)]

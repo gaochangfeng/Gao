@@ -29,8 +29,7 @@ from espnet.nets.pytorch_backend.nets_utils import to_device
 from espnet.nets.pytorch_backend.nets_utils import to_torch_tensor
 from espnet.nets.pytorch_backend.rnn.attentions import att_for
 from espnet.nets.pytorch_backend.rnn.decoders import decoder_for
-from espnet.nets.pytorch_backend.rnn.encoders import encoder_for
-from espnet.MyNet.encoder import Encoder
+from espnet.MyNet.modules.encoder import Encoder
 from espnet.nets.pytorch_backend.nets_utils import make_pad_mask
 
 CTC_LOSS_THRESHOLD = 10000
