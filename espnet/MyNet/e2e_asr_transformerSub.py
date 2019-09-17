@@ -73,7 +73,7 @@ class E2E(ASRInterface, torch.nn.Module):
         group.add_argument("--transformer-encoder-use-memory", type=int, default=0,
                            help='whether the network us memory to store history')
         group.add_argument("--transformer-encoder-att-type", type=str, default="mta",
-                           choices=["mta", "win", "smooth"],
+                           choices=["mta", "win", "smooth","rel"],
                            help='transformer encoder attention type')
         group.add_argument("--transformer-encoder-subpos", type=str, default="0,0",
                            help='subsampling pos of the encoder,not used in conv2d input layer')

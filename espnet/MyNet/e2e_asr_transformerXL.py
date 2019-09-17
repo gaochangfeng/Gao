@@ -21,6 +21,7 @@ from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
 from espnet.nets.pytorch_backend.transformer.plot import PlotAttentionReport
 from espnet.MyNet.modules.encoder import Encoder
 
+
 def subsequent_mask(size, device="cpu", dtype=torch.uint8):
     """Create mask for subsequent steps (1, size, size)
 
@@ -72,7 +73,7 @@ class E2E(ASRInterface, torch.nn.Module):
         group.add_argument("--transformer-encoder-use-memory", type=int, default=0,
                            help='whether the network us memory to store history')
         group.add_argument("--transformer-encoder-att-type", type=str, default="mta",
-                           choices=["mta", "win", "smooth"],
+                           choices=["mta", "win", "smooth", "rel"],
                            help='transformer encoder attention type')
         return parser
 

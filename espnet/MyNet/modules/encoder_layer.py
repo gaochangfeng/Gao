@@ -3,8 +3,7 @@ import torch.nn as nn
 from espnet.MyNet.modules.repos_attention import CashEncoderLayer
 from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
 from espnet.nets.pytorch_backend.transformer.embedding import PositionalEncoding
-from espnet.MyNet.attention.win_attention import  WinMultiHeadedAttention
-from espnet.MyNet.attention.win_attention import SmoothMultiHeadedAttention
+from espnet.MyNet.attention.win_attention import*
 
 
 class EncoderLayer(nn.Module):
@@ -42,6 +41,8 @@ class EncoderLayer(nn.Module):
             self.att = WinMultiHeadedAttention(n_head, d_model, dropatt)
         elif att_type == "smooth":
             self.att = SmoothMultiHeadedAttention(n_head, d_model, dropatt)
+        elif att_type == "rel":
+            self.att = RelMultiHeadedAttention(n_head, d_model, dropatt)
         else:
             raise ValueError("unknown attention type: " + att_type)
 

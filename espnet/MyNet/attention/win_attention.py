@@ -150,3 +150,75 @@ class SmoothMultiHeadedAttention(MultiHeadedAttention):
         smooth = torch.ones_like(scores).to(scores.device) / time2
         scores = (1 - eta) * scores + eta * smooth
         return scores
+
+
+class RelMultiHeadedAttention(MultiHeadedAttention):
+    """Multi-Head Attention layer
+
+    :param int n_head: the number of head s
+    :param int n_feat: the number of features
+    :param float dropout_rate: dropout rate
+    """
+
+    def __init__(self, n_head, n_feat, dropout_rate, max_len=5000):
+        super(RelMultiHeadedAttention, self).__init__(n_head, n_feat, dropout_rate)
+        # assert n_feat % n_head == 0
+        # # We assume d_v always equals d_k
+        # self.d_k = n_feat // n_head
+        # self.h = n_head
+        # self.linear_q = nn.Linear(n_feat, n_feat)
+        # self.linear_k = nn.Linear(n_feat, n_feat)
+        # self.linear_v = nn.Linear(n_feat, n_feat)
+        # self.linear_out = nn.Linear(n_feat, n_feat)
+        # self.attn = None
+        # self.dropout = nn.Dropout(p=dropout_rate)
+        self.max_len = max_len
+        self.rel_v = torch.rand(max_len, self.d_k)
+        self.rel_k = torch.rand(max_len, self.d_k)
+
+    def forward(self, query, key, value, mask):
+        """Compute 'Scaled Dot Product Attention'
+
+        :param torch.Tensor query: (batch, time1, size)
+        :param torch.Tensor key: (batch, time2, size)
+        :param torch.Tensor value: (batch, time2, size)
+        :param torch.Tensor mask: (batch, time1, time2)
+        :param torch.nn.Dropout dropout:
+        :return torch.Tensor: attentined and transformed `value` (batch, time1, d_model)
+             weighted by the query dot key attention (batch, head, time1, time2)
+        """
+        n_batch = query.size(0)
+        q = self.linear_q(query).view(n_batch, -1, self.h, self.d_k)
+        k = self.linear_k(key).view(n_batch, -1, self.h, self.d_k)
+        v = self.linear_v(value).view(n_batch, -1, self.h, self.d_k)
+        q = q.transpose(1, 2)  # (batch, head, time1, d_k)
+        k = k.transpose(1, 2)  # (batch, head, time2, d_k)
+        v = v.transpose(1, 2)  # (batch, head, time2, d_k)
+        r_k, r_v = self.getreltensor(query.size(1), key.size(1))
+        scores = torch.matmul(q, (k+r_k).transpose(-2, -1)) / math.sqrt(self.d_k)  # (batch, head, time1, time2)
+
+        if mask is not None:
+            mask = mask.unsqueeze(1).eq(0)  # (batch, 1, time1, time2)
+            scores = scores.masked_fill(mask, MIN_VALUE)
+            self.attn = torch.softmax(scores, dim=-1).masked_fill(mask, 0.0)  # (batch, head, time1, time2)
+        else:
+            self.attn = torch.softmax(scores, dim=-1)  # (batch, head, time1, time2)
+
+        p_attn = self.dropout(self.attn)
+        x = torch.matmul(p_attn, v+r_v)  # (batch, head, time1, d_k)
+        x = x.transpose(1, 2).contiguous().view(n_batch, -1, self.h * self.d_k)  # (batch, time1, d_model)
+        return self.linear_out(x)  # (batch, time1, d_model)
+
+    def getreltensor(self, qlen, klen, qoff=0):
+        # line_list_k = []
+        # line_list_v = []
+        # for i in range(1):
+        #     l_len = klen - qlen + qoff + i
+        #     r_len = klen - l_len - 1
+        #     r_k = self.rel_k[self.max_len - l_len:self.max_len + r_len + 1]
+        #     r_v = self.rel_v[self.max_len - l_len:self.max_len + r_len + 1]
+        #     line_list_k.append(r_k)
+        #     line_list_v.append(r_k)
+        # rel_k = torch.stack(line_list_k)
+        # rel_v = torch.stack(line_list_v)
+        return self.rel_k[qoff:qoff+klen], self.rel_v[qoff:qoff+klen]
