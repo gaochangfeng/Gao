@@ -171,7 +171,7 @@ class Encoder(torch.nn.Module):
         m_chunk_mask = []
         i = 0
         while (i + chunk_left + self.center_len + self.right_len) < xs.size(1):
-            if chunk_left < MaxSeqLen:
+            if self.left_len < MaxSeqLen or self.use_mem:
                 m_chunk.append(xs[:, i:i + chunk_left + self.center_len + self.right_len])
                 m_chunk_mask.append(masks[:, :, i:i + chunk_left + self.center_len + self.right_len])
             else:
