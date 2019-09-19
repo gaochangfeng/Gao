@@ -195,7 +195,7 @@ class RelMultiHeadedAttention(MultiHeadedAttention):
         k = k.transpose(1, 2)  # (batch, head, time2, d_k)
         v = v.transpose(1, 2)  # (batch, head, time2, d_k)
         r_k, r_v = self.getreltensor(query.size(1), key.size(1))
-        scores = torch.matmul(q, (k+r_k.to(k.device)).transpose(-2, -1)) / math.sqrt(self.d_k)  # (batch, head, time1, time2)
+        scores = torch.matmul(q, (k+r_k).transpose(-2, -1)) / math.sqrt(self.d_k)  # (batch, head, time1, time2)
 
         if mask is not None:
             mask = mask.unsqueeze(1).eq(0)  # (batch, 1, time1, time2)
@@ -205,7 +205,7 @@ class RelMultiHeadedAttention(MultiHeadedAttention):
             self.attn = torch.softmax(scores, dim=-1)  # (batch, head, time1, time2)
 
         p_attn = self.dropout(self.attn)
-        x = torch.matmul(p_attn, v+r_v.to(v.device))  # (batch, head, time1, d_k)
+        x = torch.matmul(p_attn, v+r_v)  # (batch, head, time1, d_k)
         x = x.transpose(1, 2).contiguous().view(n_batch, -1, self.h * self.d_k)  # (batch, time1, d_model)
         return self.linear_out(x)  # (batch, time1, d_model)
 

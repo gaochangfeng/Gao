@@ -76,9 +76,7 @@ class E2E(ASRInterface, torch.nn.Module):
                            choices=["mta", "win", "smooth","rel"],
                            help='transformer encoder attention type')
         group.add_argument("--transformer-encoder-subpos", type=str, default="0,0",
-                           help='subsampling pos of the encoder,not used in conv2d input layer'),
-        group.add_argument("--transformer-encoder-subtype", type=str, default="normal",
-                           help='subsampling type of the encoder,not used in conv2d input layer')
+                           help='subsampling pos of the encoder,not used in conv2d input layer')
         return parser
 
     @property
@@ -107,8 +105,7 @@ class E2E(ASRInterface, torch.nn.Module):
             dropout_rate=args.dropout_rate,
             positional_dropout_rate=args.dropout_rate,
             attention_dropout_rate=args.transformer_attn_dropout_rate,
-            subpos=[int(x) for x in args.transformer_encoder_subpos.split(",")],
-            subtype=args.transformer_encoder_subtype
+            subpos=[int(x) for x in args.transformer_encoder_subpos.split(",")]
         )
         self.decoder = Decoder(
             odim=odim,
